@@ -2,16 +2,21 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>การประหยัดน้ำมัน</title>
+  <title>การประหยัดค่าน้ำมันต่อเดือน</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: 'Prompt', sans-serif;
       padding: 30px;
-      max-width: 600px;
+      max-width: 700px;
       margin: auto;
       background: #f9f9f9;
       color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark {
+      background: #1e1e1e;
+      color: #f1f1f1;
     }
     h2 {
       font-size: 1.6em;
@@ -41,6 +46,11 @@
       width: 100%;
       cursor: pointer;
     }
+    .toggle-mode {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+    }
     .result {
       margin-top: 20px;
       font-size: 1.2em;
@@ -50,6 +60,9 @@
       border-radius: 8px;
       text-align: center;
     }
+    body.dark .result {
+      background: #2a2a2a;
+    }
     canvas {
       margin-top: 30px;
     }
@@ -57,19 +70,31 @@
 </head>
 <body>
 
+  <button class="toggle-mode" onclick="toggleDarkMode()">🌓 สลับโหมดกลางวัน/กลางคืน</button>
   <h2>การประหยัดค่าน้ำมันต่อเดือน</h2>
 
-  <label>อัตราการบริโภคน้ำมัน (ลิตร / 100 กม.)</label>
-  <input type="number" id="fuelEfficiency" placeholder="เช่น 6.5" step="0.1">
+  <label>เลือกโหมดการคำนวณ:</label>
+  <select id="mode" onchange="toggleInputFields()">
+    <option value="both">คิดทั้งค่าน้ำมันและค่าไฟ</option>
+    <option value="fuelOnly">คิดเฉพาะค่าน้ำมัน</option>
+    <option value="electricOnly">คิดเฉพาะค่าไฟ</option>
+  </select>
+
+  <div id="fuelFields">
+    <label>ประสิทธิภาพรถใช้น้ำมันเบนซิน (ลิตร / 100 กม.)</label>
+    <input type="number" id="fuelEfficiency" placeholder="เช่น 6.5" step="0.1">
+
+    <label>ค่าน้ำมัน (บาท / ลิตร)</label>
+    <input type="number" id="fuelPrice" placeholder="เช่น 42" step="0.01">
+  </div>
+
+  <div id="electricFields">
+    <label>ค่าไฟฟ้า (บาท / kWh)</label>
+    <input type="number" id="electricityPrice" placeholder="เช่น 4.5" step="0.01">
+  </div>
 
   <label>ระยะทางการขับขี่ต่อปี (กม.)</label>
   <input type="number" id="yearlyDistance" placeholder="เช่น 25000">
-
-  <label>ค่าน้ำมัน (บาท / ลิตร)</label>
-  <input type="number" id="fuelPrice" placeholder="เช่น 42" step="0.01">
-
-  <label>ค่าไฟฟ้า (บาท / kWh)</label>
-  <input type="number" id="electricityPrice" placeholder="เช่น 4.5" step="0.01">
 
   <button onclick="calculateSavings()">คำนวณ</button>
 
@@ -77,73 +102,128 @@
   <canvas id="comparisonChart" width="400" height="200"></canvas>
 
   <script>
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    }
+
+    function toggleInputFields() {
+      const mode = document.getElementById('mode').value;
+      document.getElementById('fuelFields').style.display = (mode === 'fuelOnly' || mode === 'both') ? 'block' : 'none';
+      document.getElementById('electricFields').style.display = (mode === 'electricOnly' || mode === 'both') ? 'block' : 'none';
+    }
+
+    window.onload = () => {
+      if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark");
+      }
+      toggleInputFields();
+    }
+
     function formatNumber(num) {
       return new Intl.NumberFormat('th-TH').format(num);
     }
 
     function calculateSavings() {
+      const mode = document.getElementById('mode').value;
       const fuelEfficiency = parseFloat(document.getElementById('fuelEfficiency').value);
       const yearlyDistance = parseFloat(document.getElementById('yearlyDistance').value);
       const fuelPrice = parseFloat(document.getElementById('fuelPrice').value);
       const electricityPrice = parseFloat(document.getElementById('electricityPrice').value);
 
-      if (isNaN(fuelEfficiency) || isNaN(yearlyDistance) || isNaN(fuelPrice) || isNaN(electricityPrice)) {
-        document.getElementById('resultArea').innerHTML = "กรุณากรอกข้อมูลให้ครบถ้วน";
+      let fuelCostPerYear = 0;
+      let electricCostPerYear = 0;
+
+      if (isNaN(yearlyDistance)) {
+        document.getElementById('resultArea').innerHTML = "กรุณากรอกระยะทางต่อปีให้ครบถ้วน";
         return;
       }
 
-      const litersUsed = (fuelEfficiency / 100) * yearlyDistance;
-      const fuelCostPerYear = litersUsed * fuelPrice;
+      if ((mode === 'fuelOnly' || mode === 'both') && (!fuelEfficiency || !fuelPrice)) {
+        document.getElementById('resultArea').innerHTML = "กรุณากรอกข้อมูลค่าน้ำมันให้ครบถ้วน";
+        return;
+      }
 
-      const kWhPer100km = 13;
-      const electricUsed = (kWhPer100km / 100) * yearlyDistance;
-      const electricCostPerYear = electricUsed * electricityPrice;
+      if ((mode === 'electricOnly' || mode === 'both') && (!electricityPrice)) {
+        document.getElementById('resultArea').innerHTML = "กรุณากรอกข้อมูลค่าไฟฟ้าให้ครบถ้วน";
+        return;
+      }
 
-      const monthlySavings = (fuelCostPerYear - electricCostPerYear) / 12;
-      const yearlySavings = fuelCostPerYear - electricCostPerYear;
+      if (mode !== 'electricOnly') {
+        const litersUsed = (fuelEfficiency / 100) * yearlyDistance;
+        fuelCostPerYear = litersUsed * fuelPrice;
+      }
 
-      document.getElementById('resultArea').innerHTML =
-        `คุณสามารถประหยัดเงินได้ประมาณ <strong>฿${formatNumber(monthlySavings.toFixed(0))}</strong> ต่อเดือน` +
-        `<br>และประมาณ <strong>฿${formatNumber(yearlySavings.toFixed(0))}</strong> ต่อปี`;
+      if (mode !== 'fuelOnly') {
+        const kWhPer100km = 13;
+        const electricUsed = (kWhPer100km / 100) * yearlyDistance;
+        electricCostPerYear = electricUsed * electricityPrice;
+      }
+
+      let monthlySavings = 0;
+      let yearlySavings = 0;
+
+      if (mode === 'both') {
+        monthlySavings = (fuelCostPerYear - electricCostPerYear) / 12;
+        yearlySavings = fuelCostPerYear - electricCostPerYear;
+      }
+
+      let resultHTML = '';
+
+      if (mode === 'fuelOnly') {
+        resultHTML += `ค่าน้ำมันประมาณ <strong>฿${formatNumber((fuelCostPerYear / 12).toFixed(0))}</strong> ต่อเดือน<br>`;
+        resultHTML += `หรือประมาณ <strong>฿${formatNumber(fuelCostPerYear.toFixed(0))}</strong> ต่อปี`;
+      } else if (mode === 'electricOnly') {
+        resultHTML += `ค่าไฟประมาณ <strong>฿${formatNumber((electricCostPerYear / 12).toFixed(0))}</strong> ต่อเดือน<br>`;
+        resultHTML += `หรือประมาณ <strong>฿${formatNumber(electricCostPerYear.toFixed(0))}</strong> ต่อปี`;
+      } else {
+        resultHTML += `คุณสามารถประหยัดเงินได้ประมาณ <strong>฿${formatNumber(monthlySavings.toFixed(0))}</strong> ต่อเดือน` +
+                      `<br>และประมาณ <strong>฿${formatNumber(yearlySavings.toFixed(0))}</strong> ต่อปี`;
+      }
+
+      document.getElementById('resultArea').innerHTML = resultHTML;
 
       const ctx = document.getElementById('comparisonChart').getContext('2d');
       if (window.myChart) window.myChart.destroy();
-      window.myChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: ['ใช้น้ำมัน', 'ใช้ไฟฟ้า'],
-          datasets: [{
-            label: 'ค่าใช้จ่ายต่อปี (บาท)',
-            data: [fuelCostPerYear, electricCostPerYear],
-            backgroundColor: ['#e74c3c', '#2ecc71']
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: {
-              display: false
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `฿${formatNumber(context.raw.toFixed(0))}`;
+
+      if (mode === 'both') {
+        window.myChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['ใช้น้ำมัน', 'ใช้ไฟฟ้า'],
+            datasets: [{
+              label: 'ค่าใช้จ่ายต่อปี (บาท)',
+              data: [fuelCostPerYear, electricCostPerYear],
+              backgroundColor: ['#e74c3c', '#2ecc71']
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return `฿${formatNumber(context.raw.toFixed(0))}`;
+                  }
                 }
               }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: function(value) {
-                  return `฿${formatNumber(value)}`;
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: function(value) {
+                    return `฿${formatNumber(value)}`;
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
+      }
     }
   </script>
 
